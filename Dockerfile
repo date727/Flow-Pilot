@@ -5,19 +5,21 @@ FROM python:3.11-slim AS base
 WORKDIR /app
 
 # 安装系统依赖
-RUN apt-get update && apt-get install -y \
-    gcc \
-    g++ \
-    libpq-dev \
-    curl \
+RUN sed -i "s@http://deb.debian.org@https://mirrors.tuna.tsinghua.edu.cn@g" /etc/apt/sources.list.d/debian.sources \
+    && apt-get update \
+    && apt-get install -y \
+        gcc \
+        g++ \
+        libpq-dev \
+        curl \
     && rm -rf /var/lib/apt/lists/*
 
 # 复制依赖文件
 COPY requirements.txt .
 
 # 安装 Python 依赖
-RUN pip install --no-cache-dir --upgrade pip && \
-    pip install --no-cache-dir -r requirements.txt
+RUN pip install --no-cache-dir --upgrade pip -i https://mirrors.aliyun.com/pypi/simple/ && \
+    pip install --no-cache-dir -r requirements.txt -i https://mirrors.aliyun.com/pypi/simple/
 
 # ── 第二阶段：运行镜像 ────────────────────────────────────────────────────────
 FROM python:3.11-slim
@@ -25,7 +27,9 @@ FROM python:3.11-slim
 WORKDIR /app
 
 # 安装运行时依赖
-RUN apt-get update && apt-get install -y \
+RUN sed -i "s@http://deb.debian.org@https://mirrors.tuna.tsinghua.edu.cn@g" /etc/apt/sources.list.d/debian.sources \
+    && apt-get update \
+    && apt-get install -y \
     libpq5 \
     curl \
     && rm -rf /var/lib/apt/lists/*
