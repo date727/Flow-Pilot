@@ -38,8 +38,13 @@ RUN sed -i "s@http://deb.debian.org@https://mirrors.tuna.tsinghua.edu.cn@g" /etc
 # 安装 uv/uvx（MCP stdio 服务器需要 uvx 启动）
 RUN pip install --no-cache-dir uv -i https://mirrors.aliyun.com/pypi/simple/
 
-# 配置 uv 使用国内镜像并预安装 MCP 服务器
-ENV UV_INDEX_URL=https://mirrors.aliyun.com/pypi/simple/
+# 创建 uv 配置目录并配置国内镜像（关键修复）
+RUN mkdir -p /root/.config/uv && \
+    echo '[index]' > /root/.config/uv/uv.toml && \
+    echo 'url = "https://mirrors.aliyun.com/pypi/simple/"' >> /root/.config/uv/uv.toml && \
+    echo 'default = true' >> /root/.config/uv/uv.toml
+
+# 预安装 MCP 服务器（使用配置文件中的镜像源）
 RUN uv tool install mcp-server-weather --python /usr/local/bin/python3.11 || echo "MCP server pre-install skipped"
 
 # 从构建阶段复制 Python 包
@@ -57,6 +62,14 @@ COPY app ./app
 
 # 创建非 root 用户
 RUN useradd -m -u 1000 flowpilot && chown -R flowpilot:flowpilot /app
+
+# 为 flowpilot 用户创建 uv 配置（关键：非 root 用户也需要配置）
+RUN mkdir -p /home/flowpilot/.config/uv && \
+    echo '[index]' > /home/flowpilot/.config/uv/uv.toml && \
+    echo 'url = "https://mirrors.aliyun.com/pypi/simple/"' >> /home/flowpilot/.config/uv/uv.toml && \
+    echo 'default = true' >> /home/flowpilot/.config/uv/uv.toml && \
+    chown -R flowpilot:flowpilot /home/flowpilot/.config
+
 USER flowpilot
 
 # 暴露端口

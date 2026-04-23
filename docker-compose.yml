@@ -114,9 +114,7 @@ services:
       REDIS_URL: redis://redis:6379/0
       MILVUS_HOST: milvus
       MILVUS_PORT: 19530
-      # 配置 uv 使用国内镜像
-      UV_INDEX_URL: https://mirrors.aliyun.com/pypi/simple/
-      UV_EXTRA_INDEX_URL: https://pypi.org/simple/
+      # MCP 服务器配置（镜像源已在 Dockerfile 中通过配置文件设置）
       MCP_SERVERS_JSON: '{"weather":{"type":"stdio","command":"uvx","args":["mcp-server-weather"]}}'
     volumes:
       # 开发时挂载代码目录，避免每次都重新构建镜像
