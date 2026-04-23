@@ -34,6 +34,10 @@ RUN sed -i "s@http://deb.debian.org@https://mirrors.tuna.tsinghua.edu.cn@g" /etc
     curl \
     && rm -rf /var/lib/apt/lists/*
 
+# 安装 uv/uvx（MCP stdio 服务器需要 uvx 启动）
+COPY --from=ghcr.io/astral-sh/uv:latest /uv /usr/local/bin/uv
+COPY --from=ghcr.io/astral-sh/uv:latest /uvx /usr/local/bin/uvx
+
 # 从构建阶段复制 Python 包
 COPY --from=base /usr/local/lib/python3.11/site-packages /usr/local/lib/python3.11/site-packages
 COPY --from=base /usr/local/bin /usr/local/bin
