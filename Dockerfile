@@ -38,6 +38,10 @@ RUN sed -i "s@http://deb.debian.org@https://mirrors.tuna.tsinghua.edu.cn@g" /etc
 # 安装 uv/uvx（MCP stdio 服务器需要 uvx 启动）
 RUN pip install --no-cache-dir uv -i https://mirrors.aliyun.com/pypi/simple/
 
+# 配置 uv 使用国内镜像并预安装 MCP 服务器
+ENV UV_INDEX_URL=https://mirrors.aliyun.com/pypi/simple/
+RUN uv tool install mcp-server-weather --python /usr/local/bin/python3.11 || echo "MCP server pre-install skipped"
+
 # 从构建阶段复制 Python 包
 COPY --from=base /usr/local/lib/python3.11/site-packages /usr/local/lib/python3.11/site-packages
 COPY --from=base /usr/local/bin /usr/local/bin

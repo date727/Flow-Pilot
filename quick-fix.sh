@@ -3,39 +3,53 @@
 echo "=== Flow-Pilot 快速修复脚本 ==="
 echo ""
 
-# 1. 重启容器
-echo "1. 重启 Docker 容器..."
+# 1. 停止容器
+echo "1. 停止现有容器..."
 docker-compose down
+
+# 2. 重新构建（应用 Dockerfile 更改）
+echo ""
+echo "2. 重新构建镜像（使用国内镜像源）..."
+docker-compose build --no-cache app
+
+# 3. 启动所有服务
+echo ""
+echo "3. 启动所有服务..."
 docker-compose up -d
 
 echo ""
-echo "2. 等待服务启动（30 秒）..."
+echo "4. 等待服务启动（30 秒）..."
 sleep 30
 
-# 2. 检查容器状态
+# 4. 检查容器状态
 echo ""
-echo "3. 检查容器状态..."
+echo "5. 检查容器状态..."
 docker-compose ps
 
-# 3. 测试后端
+# 5. 查看应用日志
 echo ""
-echo "4. 测试后端健康检查..."
-curl -s http://localhost:8000/health | python3 -m json.tool || echo "后端未就绪"
+echo "6. 应用日志（最后 20 行）..."
+docker logs flow_pilot_app --tail 20
 
-# 4. 获取虚拟机 IP
+# 6. 测试后端
 echo ""
-echo "5. 网络信息..."
-echo "本地 IP 地址："
-hostname -I | awk '{print $1}'
+echo "7. 测试后端健康检查..."
+curl -s http://localhost:8000/health | python3 -m json.tool 2>/dev/null || echo "后端未就绪，请稍等片刻"
 
-# 5. 启动前端
+# 7. 获取虚拟机 IP
 echo ""
-echo "6. 启动前端服务器..."
-echo "请在另一个终端运行："
-echo "  cd frontend"
+echo "8. 网络信息..."
+VM_IP=$(hostname -I | awk '{print $1}')
+echo "虚拟机 IP: $VM_IP"
+
+# 8. 前端启动说明
+echo ""
+echo "=== 下一步 ==="
+echo "在另一个终端运行："
+echo "  cd ~/Flow-Pilot/frontend"
 echo "  python3 -m http.server 8080 --bind 0.0.0.0"
 echo ""
-echo "然后访问："
-echo "  http://$(hostname -I | awk '{print $1}'):8080"
+echo "然后在宿主机浏览器访问："
+echo "  http://$VM_IP:8080"
 echo ""
 echo "=== 完成 ==="
