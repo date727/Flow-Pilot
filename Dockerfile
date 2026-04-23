@@ -44,8 +44,14 @@ RUN mkdir -p /root/.config/uv && \
     echo 'url = "https://mirrors.aliyun.com/pypi/simple/"' >> /root/.config/uv/uv.toml && \
     echo 'default = true' >> /root/.config/uv/uv.toml
 
-# 预安装 MCP 服务器（使用配置文件中的镜像源）
-RUN uv tool install mcp-server-weather --python /usr/local/bin/python3.11 || echo "MCP server pre-install skipped"
+# 预安装 MCP 服务器到系统（使用 pip 而非 uv tool）
+# 使用不需要 API Key 的 MCP 服务器
+RUN pip install --no-cache-dir \
+    mcp-server-fetch \
+    httpx \
+    sse-starlette \
+    pydantic \
+    -i https://mirrors.aliyun.com/pypi/simple/
 
 # 从构建阶段复制 Python 包
 COPY --from=base /usr/local/lib/python3.11/site-packages /usr/local/lib/python3.11/site-packages
