@@ -1,0 +1,46 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+venv/
+env/
+ENV/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# Git
+.git/
+.gitignore
+
+# Docker
+Dockerfile
+docker-compose.yml
+.dockerignore
+
+# Tests
+test/
+*.test.py
+
+# Documentation
+*.md
+!requirements.txt
+
+# Frontend (不需要打包到后端镜像)
+frontend/
+
+# Logs
+*.log
+
+# Environment (通过 docker-compose 传入)
+.env.example
+
+# OS
+.DS_Store
+Thumbs.db

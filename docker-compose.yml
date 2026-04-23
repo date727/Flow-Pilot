@@ -38,7 +38,7 @@ services:
 
   # ── Milvus（长期向量记忆）────────────────────────────────────────────────────
   etcd:
-    image: quay.io/coreos/etcd:v3.5.5
+    image: quay.m.daocloud.io/coreos/etcd:v3.5.5
     container_name: flow_pilot_etcd
     environment:
       - ETCD_AUTO_COMPACTION_MODE=revision
@@ -101,7 +101,9 @@ services:
 
   # ── Flow-Pilot 应用 ───────────────────────────────────────────────────────
   app:
-    build: .
+    build:
+      context: .
+      dockerfile: Dockerfile
     container_name: flow_pilot_app
     ports:
       - "8000:8000"
@@ -112,10 +114,20 @@ services:
       REDIS_URL: redis://redis:6379/0
       MILVUS_HOST: milvus
       MILVUS_PORT: 19530
+      # Docker 环境下禁用 git MCP 服务器（容器内无 .git 目录）
+      MCP_SERVERS_JSON: '{"weather":{"type":"stdio","command":"uvx","args":["mcp-server-weather"]}}'
+    volumes:
+      # 开发时挂载代码目录，避免每次都重新构建镜像
+      - ./app:/app/app:ro
+      - ./init_db.py:/app/init_db.py:ro
+      # 如果需要 git MCP 服务器，取消下面的注释
+      # - ./.git:/app/.git:ro
     depends_on:
       postgres:
         condition: service_healthy
       redis:
+        condition: service_healthy
+      milvus:
         condition: service_healthy
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8000/health"]

@@ -1,0 +1,25 @@
+version: "3.9"
+
+# 开发环境配置（覆盖 docker-compose.yml）
+# 使用方式: docker-compose -f docker-compose.yml -f docker-compose.dev.yml up
+
+services:
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: base  # 使用基础镜像，包含开发工具
+    volumes:
+      # 挂载代码目录，实现热重载
+      - ./app:/app/app
+      - ./init_db.py:/app/init_db.py
+      - ./.env:/app/.env
+    command: >
+      uvicorn app.main:app
+      --host 0.0.0.0
+      --port 8000
+      --reload
+      --log-level debug
+    environment:
+      DEBUG: "true"
+      LOG_LEVEL: DEBUG

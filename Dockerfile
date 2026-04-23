@@ -32,20 +32,24 @@ RUN sed -i "s@http://deb.debian.org@https://mirrors.tuna.tsinghua.edu.cn@g" /etc
     && apt-get install -y \
     libpq5 \
     curl \
+    git \
     && rm -rf /var/lib/apt/lists/*
 
 # 安装 uv/uvx（MCP stdio 服务器需要 uvx 启动）
-COPY --from=ghcr.io/astral-sh/uv:latest /uv /usr/local/bin/uv
-COPY --from=ghcr.io/astral-sh/uv:latest /uvx /usr/local/bin/uvx
+RUN pip install --no-cache-dir uv -i https://mirrors.aliyun.com/pypi/simple/
 
 # 从构建阶段复制 Python 包
 COPY --from=base /usr/local/lib/python3.11/site-packages /usr/local/lib/python3.11/site-packages
 COPY --from=base /usr/local/bin /usr/local/bin
 
-# 复制应用代码
-COPY app ./app
+# 先复制不常变化的文件
 COPY init_db.py .
-COPY .env .
+
+# 最后复制应用代码（最常变化的部分）
+COPY app ./app
+
+# .env 文件建议通过 docker-compose 的 env_file 或环境变量传入，不要打包到镜像
+# COPY .env .
 
 # 创建非 root 用户
 RUN useradd -m -u 1000 flowpilot && chown -R flowpilot:flowpilot /app
