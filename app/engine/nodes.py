@@ -329,16 +329,22 @@ async def _save_short_term_memory(
     history: List[Dict[str, Any]],
     final_output: str,
 ) -> None:
-    """保存会话消息到 Redis，并合并历史与当前输出"""
+    """保存会话消息到 Redis，截断长内容防止下轮上下文爆炸"""
     if not thread_id:
         return
     try:
-        # 追加 assistant 最终回复
-        saved = list(history)
-        saved.append({"role": "assistant", "content": final_output})
-        # 控制长度：只保留最近 30 条
-        if len(saved) > 30:
-            saved = saved[-30:]
+        MAX_SAVE_PER_MSG = 1000  # 存储时单条消息最多保留字符数
+        saved = []
+        for m in history:
+            m2 = dict(m)
+            c = m2.get("content", "")
+            if isinstance(c, str) and len(c) > MAX_SAVE_PER_MSG:
+                m2["content"] = c[:MAX_SAVE_PER_MSG] + "…"
+            saved.append(m2)
+        saved.append({"role": "assistant", "content": final_output[:MAX_SAVE_PER_MSG]})
+        # 控制条数：只保留最近 20 条
+        if len(saved) > 20:
+            saved = saved[-20:]
         await redis_memory.save_session(thread_id, saved)
         logger.info("[Memory] Redis 保存会话: %d 条消息", len(saved))
     except Exception as exc:
@@ -362,12 +368,26 @@ def _merge_histories(
 
 
 def _trim_context(history: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
-    """裁剪上下文，防止消息过多或单条过长导致 LLM 超时"""
-    if len(history) <= _MAX_CONTEXT_MESSAGES:
-        return history
-    # 始终保留第一条（用户原始问题）和最后 20 条
-    kept = history[:1] + history[-20:]
-    logger.info("[Executor] 上下文裁剪: %d → %d 条", len(history), len(kept))
+    """裁剪上下文，截断每条消息内容，控制总量不超过限制"""
+    MAX_PER_MSG = 2000  # 单条消息最大字符数
+
+    def trim_content(c):
+        if isinstance(c, str) and len(c) > MAX_PER_MSG:
+            return c[:MAX_PER_MSG] + f"\n…(已截断，原 {len(c)} 字符)"
+        return c
+
+    trimmed = []
+    for m in history:
+        m2 = dict(m)
+        if "content" in m2:
+            m2["content"] = trim_content(m2["content"])
+        trimmed.append(m2)
+
+    if len(trimmed) <= _MAX_CONTEXT_MESSAGES:
+        return trimmed
+    # 保留第一条（原始问题）和最后 20 条
+    kept = trimmed[:1] + trimmed[-20:]
+    logger.info("[Executor] 上下文裁剪: %d → %d 条", len(trimmed), len(kept))
     return kept
 
 

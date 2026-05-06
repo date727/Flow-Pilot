@@ -116,10 +116,14 @@ class CriticAgent:
         Returns:
             CriticResult 评估结果
         """
+        # 截断过长的输入，评审不需要看几万字也能判断质量
+        plan_trimmed = plan[:1500] if len(plan) > 1500 else plan
+        output_trimmed = output[:3000] if len(output) > 3000 else output
+
         user_prompt = _USER_PROMPT_TEMPLATE.format(
-            original_input=original_input,
-            plan=plan or "（无明确计划）",
-            output=output or "（无输出）",
+            original_input=original_input[:1000],
+            plan=plan_trimmed or "（无明确计划）",
+            output=output_trimmed or "（无输出）",
         )
 
         messages = [
