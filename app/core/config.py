@@ -34,7 +34,7 @@ class Settings(BaseSettings):
     MILVUS_HOST: str = "localhost"
     MILVUS_PORT: int = 19530
     MILVUS_COLLECTION: str = "flow_pilot_memory"
-    MILVUS_DIM: int = 1536                 # 向量维度，与 embedding 模型对齐
+    MILVUS_DIM: int = 1024                 # 向量维度，与 embedding 模型对齐（bge-m3=1024）
 
     # ── MCP Servers ───────────────────────────────────────────────────────────
     MCP_SERVERS_JSON: str = "{}"

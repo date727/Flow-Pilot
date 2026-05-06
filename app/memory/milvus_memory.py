@@ -173,8 +173,24 @@ class MilvusMemory:
         col_name = settings.MILVUS_COLLECTION
         if utility.has_collection(col_name):
             col = Collection(col_name)
-            col.load()
-            return col
+            # 校验 schema 维度是否匹配当前配置
+            try:
+                emb_field = next(f for f in col.schema.fields if f.name == "embedding")
+                existing_dim = emb_field.params.get("dim")
+                if existing_dim != settings.MILVUS_DIM:
+                    logger.warning(
+                        "[Milvus] Collection embedding 维度不匹配 (现有=%d, 配置=%d)，正在重建...",
+                        existing_dim, settings.MILVUS_DIM,
+                    )
+                    col.release()
+                    utility.drop_collection(col_name)
+                else:
+                    col.load()
+                    return col
+            except StopIteration:
+                logger.warning("[Milvus] Collection 缺少 embedding 字段，正在重建...")
+                col.release()
+                utility.drop_collection(col_name)
 
         fields = [
             FieldSchema(name="id", dtype=DataType.INT64, is_primary=True, auto_id=True),
