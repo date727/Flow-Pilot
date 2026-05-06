@@ -100,6 +100,8 @@ class LLMService:
         from litellm import aembedding
 
         embed_model = f"openai/BAAI/bge-m3"
+        logger.info("[Embed] 开始向量化: text_count=%d model=%s url=%s",
+                     len(texts), embed_model, self.base_url)
         try:
             response = await aembedding(
                 model=embed_model,
@@ -107,9 +109,23 @@ class LLMService:
                 api_key=self.api_key,
                 api_base=self.base_url,
             )
-            return [item["embedding"] for item in response.data]
+            logger.info("[Embed] 原始响应: type=%s data_len=%s",
+                         type(response).__name__,
+                         len(response.data) if hasattr(response, 'data') else 'N/A')
+            if not response.data:
+                logger.warning("[Embed] 返回空 data — model=%s 在当前平台可能不可用，尝试换模型", embed_model)
+                return []
+            result = []
+            for i, item in enumerate(response.data):
+                emb = item.get("embedding", None) if isinstance(item, dict) else getattr(item, "embedding", None)
+                if emb:
+                    result.append(emb)
+                else:
+                    logger.warning("[Embed] data[%d] 无 embedding 字段: %s", i, type(item))
+            logger.info("[Embed] 完成: 有效向量=%d/%d", len(result), len(response.data))
+            return result
         except Exception as exc:
-            logger.error("Embedding 调用失败: %s", exc)
+            logger.error("[Embed] 调用失败: %s", exc)
             raise
 
     # ── Token 统计 ────────────────────────────────────────────────────────────
