@@ -1,139 +1,226 @@
-// API 基础 URL（自动检测，与前端同源）
+// ── Flow-Pilot Chat UI ──────────────────────────────────────────────────────
 const API_BASE = '/api/v1';
 
-// DOM 元素
-const taskForm = document.getElementById('task-form');
-const taskInput = document.getElementById('task-input');
-const threadIdInput = document.getElementById('thread-id');
-const submitBtn = document.getElementById('submit-btn');
-const clearBtn = document.getElementById('clear-btn');
-const outputSection = document.getElementById('output-section');
-const progressBar = document.getElementById('progress');
-const streamOutput = document.getElementById('stream-output');
-const outputDiv = document.getElementById('output');
-const errorSection = document.getElementById('error-section');
-const healthStatus = document.getElementById('health-status');
-const toolsStatus = document.getElementById('tools-status');
-
-let currentAbortController = null;
-
-// 节点中文名
-const NODE_LABELS = {
-    planner: '规划',
-    executor: '执行',
-    tools: '工具',
-    critic: '评审',
+// ── State ──────────────────────────────────────────────────────────────────
+let state = {
+    threads: [],           // 线程 ID 列表
+    activeThreadId: null,  // 当前选中线程
+    isStreaming: false,    // 是否正在流式接收
+    controller: null,      // AbortController
 };
 
-// 初始化
+// ── DOM refs ───────────────────────────────────────────────────────────────
+const $ = (sel) => document.querySelector(sel);
+const $$ = (sel) => document.querySelectorAll(sel);
+
+const threadList = $('#thread-list');
+const chatMessages = $('#chat-messages');
+const chatForm = $('#chat-form');
+const chatInput = $('#chat-input');
+const sendBtn = $('#send-btn');
+const healthDot = $('#health-dot');
+const healthStatus = $('#health-status');
+const toolsStatus = $('#tools-status');
+
+// ── Init ───────────────────────────────────────────────────────────────────
 document.addEventListener('DOMContentLoaded', () => {
+    loadThreads();
     loadHealthStatus();
     loadTools();
-
-    taskForm.addEventListener('submit', handleSubmit);
-    clearBtn.addEventListener('click', handleClear);
+    chatForm.addEventListener('submit', handleSend);
+    $('#btn-new-chat').addEventListener('click', newChat);
+    chatInput.addEventListener('input', autoResize);
+    chatInput.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); chatForm.dispatchEvent(new Event('submit')); }
+    });
 });
 
-// 重置进度条
-function resetProgress() {
-    progressBar.querySelectorAll('.step').forEach(el => {
-        el.className = 'step';
-    });
-    streamOutput.textContent = '';
-    outputDiv.textContent = '';
+function autoResize() {
+    chatInput.style.height = 'auto';
+    chatInput.style.height = Math.min(chatInput.scrollHeight, 120) + 'px';
+    sendBtn.disabled = !chatInput.value.trim() || state.isStreaming;
 }
 
-// 更新节点状态
-function setNodeStatus(node, status) {
-    const el = progressBar.querySelector(`[data-node="${node}"]`);
-    if (!el) return;
-    el.className = 'step';
-    if (status === 'active') el.classList.add('active');
-    else if (status === 'done') el.classList.add('done');
-    else if (status === 'error') el.classList.add('error-step');
-}
-
-// 追加流式文本
-function appendStream(text) {
-    streamOutput.textContent += text;
-    streamOutput.scrollTop = streamOutput.scrollHeight;
-}
-
-// 处理 SSE 事件
-function handleSSEEvent(data) {
-    switch (data.type) {
-        case 'node_start':
-            setNodeStatus(data.node, 'active');
-            appendStream(`\n▶ ${NODE_LABELS[data.node] || data.node} 开始...\n`);
-            break;
-
-        case 'token':
-            appendStream(data.content);
-            break;
-
-        case 'node_end':
-            setNodeStatus(data.node, 'done');
-            if (data.output) {
-                appendStream(`\n✅ ${NODE_LABELS[data.node] || data.node} 完成\n`);
-            }
-            break;
-
-        case 'done':
-            appendStream('\n━━━ 全部完成 ━━━\n');
-            break;
-
-        case 'error':
-            appendStream(`\n❌ 错误: ${data.message}\n`);
-            showError(data.message);
-            break;
+// ── Thread List ────────────────────────────────────────────────────────────
+async function loadThreads() {
+    try {
+        const res = await fetch(`${API_BASE}/tasks/`);
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        const data = await res.json();
+        state.threads = Array.isArray(data) ? data : [];
+        renderThreadList();
+        // 自动选中第一个
+        if (!state.activeThreadId && state.threads.length > 0) {
+            selectThread(state.threads[0]);
+        }
+    } catch (err) {
+        threadList.innerHTML = '<p class="empty">加载失败</p>';
     }
 }
 
-// 处理表单提交（流式）
-async function handleSubmit(e) {
-    e.preventDefault();
-
-    const input = taskInput.value.trim();
-    if (!input) {
-        showError('请输入任务描述');
+function renderThreadList() {
+    if (state.threads.length === 0) {
+        threadList.innerHTML = '<p class="empty">暂无对话</p>';
         return;
     }
+    threadList.innerHTML = state.threads.map(tid => `
+        <div class="thread-item${tid === state.activeThreadId ? ' active' : ''}"
+             data-thread-id="${escapeAttr(tid)}"
+             role="option"
+             aria-selected="${tid === state.activeThreadId}">
+            <span class="tid" title="${escapeAttr(tid)}">${shortId(tid)}</span>
+        </div>
+    `).join('');
 
-    // 取消上一次请求
-    if (currentAbortController) {
-        currentAbortController.abort();
+    threadList.querySelectorAll('.thread-item').forEach(el => {
+        el.addEventListener('click', () => selectThread(el.dataset.threadId));
+    });
+}
+
+function shortId(id) {
+    if (!id) return '';
+    return id.length > 24 ? id.slice(0, 12) + '…' + id.slice(-8) : id;
+}
+
+async function selectThread(threadId) {
+    state.activeThreadId = threadId;
+    renderThreadList();
+    await loadThreadHistory(threadId);
+}
+
+async function loadThreadHistory(threadId) {
+    chatMessages.innerHTML = '<div class="empty-chat"><p>加载中<span class="loading-dot"></span><span class="loading-dot"></span><span class="loading-dot"></span></p></div>';
+    try {
+        const res = await fetch(`${API_BASE}/tasks/${threadId}`);
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        const data = await res.json();
+        renderMessages(data.messages || []);
+    } catch (err) {
+        chatMessages.innerHTML = `<div class="empty-chat"><p>加载失败: ${escapeHtml(err.message)}</p></div>`;
     }
-    currentAbortController = new AbortController();
+}
 
-    submitBtn.disabled = true;
-    submitBtn.innerHTML = '<span class="loading" role="status" aria-label="加载中"></span> 执行中…';
+function newChat() {
+    state.activeThreadId = null;
+    renderThreadList();
+    chatMessages.innerHTML = '<div class="empty-chat"><p>新对话 — 输入你的第一个任务开始</p></div>';
+    chatInput.value = '';
+    chatInput.focus();
+    sendBtn.disabled = true;
+}
 
-    errorSection.innerHTML = '';
-    outputSection.style.display = 'block';
-    resetProgress();
+// ── Message Rendering ──────────────────────────────────────────────────────
+function renderMessages(messages) {
+    if (!messages || messages.length === 0) {
+        chatMessages.innerHTML = '<div class="empty-chat"><p>暂无消息</p></div>';
+        return;
+    }
+    chatMessages.innerHTML = '';
+    messages.forEach(m => appendMessage(m, false));
+    scrollToBottom();
+}
+
+function appendMessage(msg, scroll = true) {
+    // 移除空状态提示
+    const empty = chatMessages.querySelector('.empty-chat');
+    if (empty) empty.remove();
+
+    const row = document.createElement('div');
+    const role = msg.role || 'assistant';
+
+    if (role === 'tool') {
+        row.className = 'msg-row tool';
+        const tag = msg.name ? `<span class="tool-tag">${escapeHtml(msg.name)}</span>` : '';
+        row.innerHTML = `<div class="msg-bubble">${tag}${escapeHtml(msg.content || '')}</div>`;
+    } else {
+        row.className = `msg-row ${role}`;
+        let content = escapeHtml(msg.content || '');
+        // 工具调用信息
+        if (msg.tool_calls && msg.tool_calls.length > 0) {
+            const tools = msg.tool_calls.map(tc => {
+                const tname = typeof tc === 'object' ? (tc.name || tc.function?.name || '') : '';
+                return `<span class="tool-tag">🔧 ${escapeHtml(tname)}</span>`;
+            }).join('');
+            content = tools + (content ? '\n' + content : '');
+        }
+        row.innerHTML = `<div class="msg-bubble">${content}</div>`;
+    }
+
+    chatMessages.appendChild(row);
+    if (scroll) scrollToBottom();
+    return row;
+}
+
+function scrollToBottom() {
+    requestAnimationFrame(() => {
+        chatMessages.scrollTop = chatMessages.scrollHeight;
+    });
+}
+
+// ── Send Message ───────────────────────────────────────────────────────────
+async function handleSend(e) {
+    e.preventDefault();
+    const input = chatInput.value.trim();
+    if (!input || state.isStreaming) return;
+
+    // Show user message
+    appendMessage({ role: 'user', content: input });
+    chatInput.value = '';
+    autoResize();
+    scrollToBottom();
+
+    // Start streaming
+    state.isStreaming = true;
+    sendBtn.disabled = true;
+    sendBtn.textContent = '…';
+
+    if (state.controller) state.controller.abort();
+    state.controller = new AbortController();
+
+    // Add an assistant placeholder that will be updated
+    const aiRow = appendMessage({ role: 'assistant', content: '' });
+    const aiBubble = aiRow.querySelector('.msg-bubble');
+    let aiContent = '';
+
+    // Add inline progress
+    const progressRow = document.createElement('div');
+    progressRow.className = 'msg-row assistant';
+    progressRow.innerHTML = `
+        <div class="progress-inline" id="inline-progress">
+            <span class="pi-step" data-node="planner">规划</span><span class="pi-arrow">→</span>
+            <span class="pi-step" data-node="executor">执行</span><span class="pi-arrow">→</span>
+            <span class="pi-step" data-node="tools">工具</span><span class="pi-arrow">→</span>
+            <span class="pi-step" data-node="critic">评审</span>
+        </div>`;
+    chatMessages.appendChild(progressRow);
+    const progSteps = progressRow.querySelectorAll('.pi-step');
+
+    function setProg(node, cls) {
+        progSteps.forEach(s => { if (s.dataset.node === node) s.classList.add(cls); });
+    }
+
+    let resultThreadId = null;
 
     try {
-        const response = await fetch(`${API_BASE}/tasks/`, {
+        const res = await fetch(`${API_BASE}/tasks/`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
                 input: input,
-                thread_id: threadIdInput.value.trim() || null,
+                thread_id: state.activeThreadId || null,
                 stream: true,
             }),
-            signal: currentAbortController.signal,
+            signal: state.controller.signal,
         });
 
-        if (!response.ok) {
-            const errorData = await response.json().catch(() => ({}));
-            throw new Error(errorData.detail || `HTTP ${response.status}`);
+        if (!res.ok) {
+            const err = await res.json().catch(() => ({}));
+            throw new Error(err.detail || `HTTP ${res.status}`);
         }
 
-        // 读取 SSE 流
-        const reader = response.body.getReader();
+        const reader = res.body.getReader();
         const decoder = new TextDecoder();
         let buffer = '';
-        let threadId = '';
 
         while (true) {
             const { done, value } = await reader.read();
@@ -146,173 +233,117 @@ async function handleSubmit(e) {
             for (const line of lines) {
                 const trimmed = line.trim();
                 if (!trimmed || !trimmed.startsWith('data: ')) continue;
-
                 try {
                     const data = JSON.parse(trimmed.slice(6));
-                    handleSSEEvent(data);
-                    if (data.type === 'done' && data.thread_id) {
-                        threadId = data.thread_id;
+                    switch (data.type) {
+                        case 'node_start':
+                            setProg(data.node, 'active');
+                            break;
+                        case 'token':
+                            aiContent += data.content;
+                            aiBubble.textContent = aiContent;
+                            scrollToBottom();
+                            break;
+                        case 'node_end':
+                            setProg(data.node, 'done');
+                            break;
+                        case 'done':
+                            if (data.thread_id) resultThreadId = data.thread_id;
+                            break;
+                        case 'error':
+                            aiContent += `\n\n❌ ${data.message}`;
+                            aiBubble.textContent = aiContent;
+                            break;
                     }
-                } catch (_) {
-                    // 忽略非 JSON 行
-                }
+                } catch (_) { /* skip malformed */ }
             }
         }
 
-        // 流结束后获取最终结果
-        if (threadId) {
-            await loadFinalResult(threadId);
-            if (!threadIdInput.value) {
-                threadIdInput.value = threadId;
-            }
+        // Remove progress bar
+        progressRow.remove();
+
+        // If no content came through, show fallback
+        if (!aiContent.trim()) {
+            aiBubble.textContent = '(无输出)';
         }
 
-    } catch (error) {
-        if (error.name !== 'AbortError') {
-            showError(`任务执行失败: ${error.message}`);
+        // Update thread list and reload full history for refined output
+        if (resultThreadId) {
+            state.activeThreadId = resultThreadId;
+            if (!state.threads.includes(resultThreadId)) {
+                state.threads.unshift(resultThreadId);
+            }
+            renderThreadList();
+            // Reload to get final refined output (after Critic, tool messages, etc.)
+            await loadThreadHistory(resultThreadId);
+        }
+
+    } catch (err) {
+        if (err.name !== 'AbortError') {
+            progressRow.remove();
+            aiBubble.textContent = aiContent + `\n\n❌ 执行失败: ${err.message}`;
         }
     } finally {
-        submitBtn.disabled = false;
-        submitBtn.textContent = '提交任务';
-        currentAbortController = null;
+        state.isStreaming = false;
+        sendBtn.textContent = '发送';
+        sendBtn.disabled = !chatInput.value.trim();
+        state.controller = null;
     }
 }
 
-// 加载最终结果
-async function loadFinalResult(threadId) {
-    try {
-        const response = await fetch(`${API_BASE}/tasks/${threadId}`);
-        if (!response.ok) return;
-
-        const result = await response.json();
-        displayResult(result);
-    } catch (_) {
-        outputDiv.textContent = '(无法加载最终结果)';
-    }
-}
-
-// 显示最终结果
-function displayResult(result) {
-    const output = [];
-
-    output.push(`会话 ID: ${result.thread_id}`);
-    output.push(`反思轮次: ${result.reflection_round}`);
-    output.push(`评分: ${result.critic_score.toFixed(2)}`);
-    output.push(`消息数: ${result.message_count}`);
-
-    if (result.plan) {
-        output.push('\n── 执行计划 ──\n');
-        output.push(result.plan);
-    }
-
-    if (result.output) {
-        output.push('\n── 最终输出 ──\n');
-        output.push(result.output);
-    }
-
-    outputDiv.textContent = output.join('\n');
-}
-
-// 显示错误
-function showError(message) {
-    errorSection.innerHTML = `
-        <div class="error-message" role="alert">
-            <strong>错误:</strong> ${escapeHtml(message)}
-        </div>
-    `;
-}
-
-// 清空表单
-function handleClear() {
-    taskInput.value = '';
-    threadIdInput.value = '';
-    outputDiv.textContent = '';
-    streamOutput.textContent = '';
-    outputSection.style.display = 'none';
-    errorSection.innerHTML = '';
-    resetProgress();
-    taskInput.focus();
-}
-
-// 加载健康状态
+// ── Health & Tools ─────────────────────────────────────────────────────────
 async function loadHealthStatus() {
     try {
-        const response = await fetch('/health');
-        if (!response.ok) throw new Error(`HTTP ${response.status}`);
+        const res = await fetch('/health');
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        const data = await res.json();
+        const svc = data.services || {};
+        const redisOk = (svc.redis || '').includes('connected');
+        const milvusOk = (svc.milvus || '').includes('connected');
 
-        const data = await response.json();
-        displayHealthStatus(data);
-    } catch (error) {
+        healthDot.className = 'dot' + (redisOk ? '' : ' offline');
+
         healthStatus.innerHTML = `
-            <p class="status-badge status-error">连接失败</p>
-            <p style="margin-top: 0.5rem; font-size: 0.875rem; color: var(--text-secondary);">
-                ${escapeHtml(error.message)}
-            </p>
+            <div class="status-row"><span>Redis</span><span class="status-dot ${redisOk ? 'ok' : 'warn'}"></span> ${svc.redis || '?'}</div>
+            <div class="status-row"><span>Milvus</span><span class="status-dot ${milvusOk ? 'ok' : 'warn'}"></span> ${svc.milvus || '?'}</div>
+            <div class="status-row"><span>MCP</span><span>${svc.mcp_servers || '?'}</span></div>
         `;
+    } catch (err) {
+        healthDot.className = 'dot offline';
+        healthStatus.innerHTML = '<p style="color:var(--error-color);font-size:0.8rem;">连接失败</p>';
     }
 }
 
-// 显示健康状态
-function displayHealthStatus(data) {
-    const services = data.services || {};
-    const html = [];
-
-    html.push(`<p class="status-badge status-success">${data.status}</p>`);
-    html.push('<div style="margin-top: 1rem; font-size: 0.875rem;">');
-
-    html.push(`<p><strong>Redis:</strong> ${services.redis || 'unknown'}</p>`);
-    html.push(`<p><strong>Milvus:</strong> ${services.milvus || 'unknown'}</p>`);
-    html.push(`<p><strong>MCP:</strong> ${services.mcp_servers || 'unknown'}</p>`);
-
-    html.push('</div>');
-    healthStatus.innerHTML = html.join('');
-}
-
-// 加载工具列表
 async function loadTools() {
     try {
-        const response = await fetch(`${API_BASE}/tools/`);
-        if (!response.ok) throw new Error(`HTTP ${response.status}`);
-
-        const data = await response.json();
-        displayTools(data);
-    } catch (error) {
-        toolsStatus.innerHTML = `
-            <p class="empty-state">加载失败: ${escapeHtml(error.message)}</p>
-        `;
-    }
-}
-
-// 显示工具列表
-function displayTools(data) {
-    const tools = data.tools || [];
-
-    if (tools.length === 0) {
-        toolsStatus.innerHTML = '<p class="empty-state">暂无可用工具</p>';
-        return;
-    }
-
-    const html = [];
-    html.push(`<p style="margin-bottom: 1rem; font-size: 0.875rem; color: var(--text-secondary);">共 ${tools.length} 个工具</p>`);
-    html.push('<ul class="tools-list">');
-
-    tools.forEach(tool => {
-        const fn = tool.function || {};
-        html.push('<li class="tool-item">');
-        html.push(`<div class="tool-name">${escapeHtml(fn.name || 'unknown')}</div>`);
-        if (fn.description) {
-            html.push(`<div class="tool-desc">${escapeHtml(fn.description)}</div>`);
+        const res = await fetch(`${API_BASE}/tools/`);
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        const data = await res.json();
+        const tools = data.tools || [];
+        if (tools.length === 0) {
+            toolsStatus.innerHTML = '<p style="color:var(--text-tertiary);font-size:0.8rem;">暂无可用工具</p>';
+            return;
         }
-        html.push('</li>');
-    });
-
-    html.push('</ul>');
-    toolsStatus.innerHTML = html.join('');
+        toolsStatus.innerHTML = `
+            <p style="font-size:0.75rem;color:var(--text-tertiary);margin-bottom:0.5rem;">共 ${tools.length} 个</p>
+            <ul class="tool-list">${tools.map(t => {
+                const fn = t.function || {};
+                return `<li><div class="tname">${escapeHtml(fn.name || '?')}</div><div class="tdesc">${escapeHtml(fn.description || '')}</div></li>`;
+            }).join('')}</ul>
+        `;
+    } catch (err) {
+        toolsStatus.innerHTML = '<p style="color:var(--error-color);font-size:0.8rem;">加载失败</p>';
+    }
 }
 
-// HTML 转义
-function escapeHtml(text) {
-    const div = document.createElement('div');
-    div.textContent = text;
-    return div.innerHTML;
+// ── Helpers ────────────────────────────────────────────────────────────────
+function escapeHtml(s) {
+    if (!s) return '';
+    const d = document.createElement('div');
+    d.textContent = typeof s === 'string' ? s : JSON.stringify(s);
+    return d.innerHTML;
+}
+
+function escapeAttr(s) {
+    return (s || '').replace(/"/g, '&quot;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
 }
