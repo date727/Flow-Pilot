@@ -161,6 +161,8 @@ function scrollToBottom() {
 }
 
 // ── Send Message ───────────────────────────────────────────────────────────
+const NODE_LABELS = { planner: '规划', executor: '执行', tools: '工具', critic: '评审' };
+
 async function handleSend(e) {
     e.preventDefault();
     const input = chatInput.value.trim();
@@ -180,26 +182,57 @@ async function handleSend(e) {
     if (state.controller) state.controller.abort();
     state.controller = new AbortController();
 
-    // Add an assistant placeholder that will be updated
+    // Assistant bubble accumulates output in real-time
     const aiRow = appendMessage({ role: 'assistant', content: '' });
     const aiBubble = aiRow.querySelector('.msg-bubble');
     let aiContent = '';
 
-    // Add inline progress
+    // Dynamic progress log — shows each node run as a new step
     const progressRow = document.createElement('div');
     progressRow.className = 'msg-row assistant';
-    progressRow.innerHTML = `
-        <div class="progress-inline" id="inline-progress">
-            <span class="pi-step" data-node="planner">规划</span><span class="pi-arrow">→</span>
-            <span class="pi-step" data-node="executor">执行</span><span class="pi-arrow">→</span>
-            <span class="pi-step" data-node="tools">工具</span><span class="pi-arrow">→</span>
-            <span class="pi-step" data-node="critic">评审</span>
-        </div>`;
+    progressRow.innerHTML = '<div class="progress-inline" id="inline-progress"></div>';
     chatMessages.appendChild(progressRow);
-    const progSteps = progressRow.querySelectorAll('.pi-step');
+    const progEl = document.getElementById('inline-progress');
 
-    function setProg(node, cls) {
-        progSteps.forEach(s => { if (s.dataset.node === node) s.classList.add(cls); });
+    const nodeRunCount = {};  // 每个节点运行次数（处理 ReAct 循环）
+
+    function addProgressStep(node) {
+        nodeRunCount[node] = (nodeRunCount[node] || 0) + 1;
+        const label = NODE_LABELS[node] || node;
+        const round = nodeRunCount[node] > 1 ? `·${nodeRunCount[node]}` : '';
+        const span = document.createElement('span');
+        span.className = 'pi-step active';
+        span.dataset.node = node;
+        span.dataset.round = nodeRunCount[node];
+        span.textContent = label + round;
+        if (progEl.children.length > 0) {
+            const arrow = document.createElement('span');
+            arrow.className = 'pi-arrow';
+            arrow.textContent = '→';
+            progEl.appendChild(arrow);
+        }
+        progEl.appendChild(span);
+        scrollToBottom();
+    }
+
+    function markProgressDone(node) {
+        for (const s of progEl.querySelectorAll('.pi-step.active')) {
+            if (s.dataset.node === node) {
+                s.classList.remove('active');
+                s.classList.add('done');
+                return;
+            }
+        }
+    }
+
+    function appendOutput(label, text) {
+        if (!text) return;
+        const trimmed = text.trim();
+        if (!trimmed) return;
+        if (aiContent) aiContent += '\n\n';
+        aiContent += `📌 ${label}:\n${trimmed}`;
+        aiBubble.textContent = aiContent;
+        scrollToBottom();
     }
 
     let resultThreadId = null;
@@ -240,7 +273,7 @@ async function handleSend(e) {
                     const data = JSON.parse(trimmed.slice(6));
                     switch (data.type) {
                         case 'node_start':
-                            setProg(data.node, 'active');
+                            addProgressStep(data.node);
                             break;
                         case 'token':
                             aiContent += data.content;
@@ -248,7 +281,11 @@ async function handleSend(e) {
                             scrollToBottom();
                             break;
                         case 'node_end':
-                            setProg(data.node, 'done');
+                            markProgressDone(data.node);
+                            // 立刻展示该节点输出（规划、执行结果等）
+                            if (data.output) {
+                                appendOutput(NODE_LABELS[data.node] || data.node, data.output);
+                            }
                             break;
                         case 'done':
                             if (data.thread_id) resultThreadId = data.thread_id;
@@ -256,6 +293,7 @@ async function handleSend(e) {
                         case 'error':
                             aiContent += `\n\n❌ ${data.message}`;
                             aiBubble.textContent = aiContent;
+                            scrollToBottom();
                             break;
                     }
                 } catch (_) { /* skip malformed */ }
@@ -265,19 +303,17 @@ async function handleSend(e) {
         // Remove progress bar
         progressRow.remove();
 
-        // If no content came through, show fallback
         if (!aiContent.trim()) {
             aiBubble.textContent = '(无输出)';
         }
 
-        // Update thread list and reload full history for refined output
+        // Update thread list and reload for full refined output
         if (resultThreadId) {
             state.activeThreadId = resultThreadId;
             if (!state.threads.includes(resultThreadId)) {
                 state.threads.unshift(resultThreadId);
             }
             renderThreadList();
-            // Reload to get final refined output (after Critic, tool messages, etc.)
             await loadThreadHistory(resultThreadId);
         }
 

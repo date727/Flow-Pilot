@@ -146,9 +146,17 @@ async def _stream_task(
             elif event_type == "on_chain_end":
                 node_name = event.get("name", "")
                 if node_name in ("planner", "executor", "tools", "critic"):
-                    output = data.get("output", {})
-                    if isinstance(output, dict) and output.get("output"):
-                        yield f"data: {json.dumps({'type': 'node_end', 'node': node_name, 'output': output.get('output', '')}, ensure_ascii=False)}\n\n"
+                    node_output = data.get("output", {})
+                    if isinstance(node_output, dict):
+                        # 各节点返回的 key 不同，统一提取展示文本
+                        text = (
+                            node_output.get("output") or          # executor / critic 最终输出
+                            node_output.get("plan") or            # planner 计划
+                            node_output.get("critic_feedback") or # critic 反馈
+                            ""
+                        )
+                        if text:
+                            yield f"data: {json.dumps({'type': 'node_end', 'node': node_name, 'output': text}, ensure_ascii=False)}\n\n"
 
         yield f"data: {json.dumps({'type': 'done', 'thread_id': thread_id}, ensure_ascii=False)}\n\n"
 
