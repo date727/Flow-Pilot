@@ -99,6 +99,24 @@ def _serialize_messages(messages) -> List[MessageOut]:
     return result
 
 
+async def _persist_long_term_memory(
+    thread_id: str,
+    task: str,
+    final_state: Dict[str, Any],
+) -> None:
+    """任务完成后异步存入 Milvus 长期记忆（失败不影响主流程）"""
+    try:
+        from app.engine.nodes import store_long_term_memory as persist
+
+        output = final_state.get("output", "")
+        plan = final_state.get("plan", "")
+        score = final_state.get("critic_score", 0)
+        summary = f"[评分: {score:.1f}] 计划: {plan[:200]} | 结果: {output[:300]}"
+        await persist(thread_id, task, summary)
+    except Exception as exc:
+        logger.warning("[API] 长期记忆存储失败: %s", exc)
+
+
 async def _stream_task(
     app,
     initial_input: Dict[str, Any],
@@ -155,6 +173,7 @@ async def create_task(request: TaskRequest):
 
     initial_input = {
         "input": request.input,
+        "thread_id": thread_id,
         "messages": [HumanMessage(content=request.input)],
         "metadata": {"source": "api"},
         "reflection_round": 0,
@@ -180,6 +199,9 @@ async def create_task(request: TaskRequest):
         logger.info("[API] 开始执行任务 thread_id=%s", thread_id)
         final_state = await app.ainvoke(initial_input, config=config)
         logger.info("[API] 任务完成 thread_id=%s", thread_id)
+
+        # ── 存入长期记忆（Milvus） ──────────────────────────────────────────
+        await _persist_long_term_memory(thread_id, request.input, final_state)
 
         return TaskResponse(
             thread_id=thread_id,

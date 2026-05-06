@@ -1,7 +1,13 @@
 {
   "permissions": {
     "allow": [
-      "Bash(git *)"
+      "Bash(git *)",
+      "Bash(python -c \"import ast; ast.parse\\(open\\('app/engine/nodes.py'\\).read\\(\\)\\); print\\('nodes.py OK'\\)\")",
+      "Bash(python -c \"import ast; ast.parse\\(open\\('app/api/tasks.py'\\).read\\(\\)\\); print\\('tasks.py OK'\\)\")",
+      "Bash(python -c \"import ast; ast.parse\\(open\\('app/engine/state.py'\\).read\\(\\)\\); print\\('state.py OK'\\)\")",
+      "Bash(python -c \"import ast; ast.parse\\(open\\('app/engine/nodes.py', encoding='utf-8'\\).read\\(\\)\\); print\\('nodes.py OK'\\)\")",
+      "Bash(python -c \"import ast; ast.parse\\(open\\('app/api/tasks.py', encoding='utf-8'\\).read\\(\\)\\); print\\('tasks.py OK'\\)\")",
+      "Bash(python -c \"import ast; ast.parse\\(open\\('app/engine/state.py', encoding='utf-8'\\).read\\(\\)\\); print\\('state.py OK'\\)\")"
     ]
   }
 }

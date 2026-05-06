@@ -26,6 +26,8 @@ class AgentState(TypedDict):
     # ── 核心字段 ──────────────────────────────────────────────────────────────
     input: str
 
+    thread_id: str                 # 会话 ID，用于记忆存取
+
     # Annotated + operator.add 允许节点向列表中追加新消息
     messages: Annotated[Sequence[BaseMessage], operator.add]
 
