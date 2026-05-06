@@ -1,5 +1,5 @@
-// API 基础 URL（自动检测）
-const API_BASE = `${window.location.protocol}//${window.location.hostname}:8000/api/v1`;
+// API 基础 URL（自动检测，与前端同源）
+const API_BASE = '/api/v1';
 
 // DOM 元素
 const taskForm = document.getElementById('task-form');
@@ -121,7 +121,7 @@ function handleClear() {
 // 加载健康状态
 async function loadHealthStatus() {
     try {
-        const response = await fetch(`${window.location.protocol}//${window.location.hostname}:8000/health`);
+        const response = await fetch('/health');
         if (!response.ok) throw new Error(`HTTP ${response.status}`);
         
         const data = await response.json();

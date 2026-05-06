@@ -2,11 +2,13 @@
 Flow-Pilot FastAPI 应用入口
 """
 import time
+import os
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import JSONResponse
+from fastapi.responses import JSONResponse, FileResponse
+from fastapi.staticfiles import StaticFiles
 
 from app.core.config import settings
 from app.core.logging import setup_logging, get_logger
@@ -122,15 +124,9 @@ app.include_router(tools_router, prefix="/api/v1")
 
 # ── 基础端点 ──────────────────────────────────────────────────────────────────
 
-@app.get("/", tags=["Root"], summary="服务根路径")
+@app.get("/", tags=["Root"], summary="前端界面")
 async def root():
-    return {
-        "name": settings.APP_NAME,
-        "version": "1.0.0",
-        "status": "running",
-        "docs": "/docs",
-        "redoc": "/redoc",
-    }
+    return FileResponse(os.path.join(FRONTEND_DIR, "index.html"))
 
 
 @app.get("/health", tags=["Root"], summary="健康检查")
@@ -176,6 +172,11 @@ async def get_metrics():
         "model": llm_service.model_name,
     }
 
+
+# ── 静态文件（前端界面）────────────────────────────────────────────────────────
+
+FRONTEND_DIR = os.path.join(os.path.dirname(os.path.dirname(__file__)), "frontend")
+app.mount("/", StaticFiles(directory=FRONTEND_DIR, html=True), name="frontend")
 
 # ── 本地启动 ──────────────────────────────────────────────────────────────────
 
