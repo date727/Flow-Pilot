@@ -159,6 +159,14 @@ async def _stream_task(
 
         yield f"data: {json.dumps({'type': 'done', 'thread_id': thread_id}, ensure_ascii=False)}\n\n"
 
+        # 流完成后从 checkpoint 读取最终状态，存入 Milvus
+        try:
+            final_state = await app.aget_state(config)
+            values = final_state.values if final_state else {}
+            await _persist_long_term_memory(thread_id, initial_input.get("input", ""), values)
+        except Exception as exc:
+            logger.warning("[API/stream] 长期记忆存储失败: %s", exc)
+
     except Exception as exc:
         logger.error("[API/stream] 流式任务失败: %s", exc)
         yield f"data: {json.dumps({'type': 'error', 'message': str(exc)}, ensure_ascii=False)}\n\n"
