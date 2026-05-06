@@ -12,7 +12,8 @@
       "PowerShell($html = Get-Content frontend\\\\index.html -Raw -Encoding UTF8; Write-Host \"index.html OK \\($\\($html.Length\\) chars\\)\"; Write-Host \"chat-messages: $\\($html -match 'chat-messages'\\)\"; Write-Host \"thread-list: $\\($html -match 'thread-list'\\)\"; Write-Host \"chat-input: $\\($html -match 'chat-input'\\)\")",
       "PowerShell(python -c \"import ast; ast.parse\\(open\\('app/engine/nodes.py', encoding='utf-8'\\).read\\(\\)\\); print\\('OK'\\)\")",
       "PowerShell(python -c \"import ast; ast.parse\\(open\\('app/api/tasks.py', encoding='utf-8'\\).read\\(\\)\\); print\\('tasks.py OK'\\)\")",
-      "PowerShell(python -c \"import ast; ast.parse\\(open\\('app/api/tasks.py', encoding='utf-8'\\).read\\(\\)\\); print\\('OK'\\)\")"
+      "PowerShell(python -c \"import ast; ast.parse\\(open\\('app/api/tasks.py', encoding='utf-8'\\).read\\(\\)\\); print\\('OK'\\)\")",
+      "Bash(pip show *)"
     ]
   }
 }

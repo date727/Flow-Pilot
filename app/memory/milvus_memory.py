@@ -145,12 +145,13 @@ class MilvusMemory:
             )
             hits = []
             for hit in results[0]:
+                fields = hit.fields
                 hits.append({
-                    "content": hit.entity.get("content"),
+                    "content": fields.get("content"),
                     "score": hit.score,
-                    "thread_id": hit.entity.get("thread_id"),
-                    "metadata": json.loads(hit.entity.get("metadata_json", "{}")),
-                    "created_at": hit.entity.get("created_at"),
+                    "thread_id": fields.get("thread_id"),
+                    "metadata": json.loads(fields.get("metadata_json", "{}")),
+                    "created_at": fields.get("created_at"),
                 })
             return hits
         except Exception as exc:
