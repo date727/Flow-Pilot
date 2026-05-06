@@ -64,6 +64,7 @@ class LLMService:
             "api_key": self.api_key,
             "base_url": self.base_url,
             "temperature": temperature,
+            "timeout": 60.0,  # 单次 API 调用超时（秒）
         }
         if max_tokens:
             kwargs["max_tokens"] = max_tokens

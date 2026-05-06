@@ -286,6 +286,77 @@
             padding: 2rem;
         }
 
+        .progress-bar {
+            display: flex;
+            align-items: center;
+            flex-wrap: wrap;
+            gap: 0.25rem;
+            margin-bottom: 1rem;
+            font-size: 0.875rem;
+        }
+
+        .progress-bar .step {
+            display: inline-flex;
+            align-items: center;
+            gap: 0.3rem;
+            padding: 0.3rem 0.6rem;
+            border-radius: 6px;
+            background: var(--border-color);
+            color: var(--text-secondary);
+            transition: all 0.3s;
+        }
+
+        .progress-bar .step.active {
+            background: var(--accent-color);
+            color: #fff;
+            animation: pulse 1s ease-in-out infinite;
+        }
+
+        .progress-bar .step.done {
+            background: rgba(16, 185, 129, 0.15);
+            color: var(--success-color);
+        }
+
+        .progress-bar .step.error-step {
+            background: rgba(239, 68, 68, 0.15);
+            color: var(--error-color);
+        }
+
+        .step-icon::before {
+            content: '○';
+            font-style: normal;
+        }
+
+        .step.active .step-icon::before {
+            content: '◉';
+        }
+
+        .step.done .step-icon::before {
+            content: '✓';
+        }
+
+        .step.error-step .step-icon::before {
+            content: '✗';
+        }
+
+        .step-arrow {
+            color: var(--text-secondary);
+            font-size: 0.75rem;
+        }
+
+        @keyframes pulse {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.7; }
+        }
+
+        #stream-output {
+            min-height: 60px;
+            max-height: 300px;
+            margin-bottom: 0.5rem;
+            font-size: 0.8rem;
+            color: var(--text-secondary);
+        }
+
         .skip-link {
             position: absolute;
             top: -40px;
@@ -354,7 +425,18 @@
                 </form>
 
                 <div id="output-section" style="margin-top: 2rem; display: none;">
-                    <h2>执行结果</h2>
+                    <h2>执行进度</h2>
+                    <div id="progress" class="progress-bar">
+                        <span class="step" data-node="planner"><span class="step-icon"></span> 规划</span>
+                        <span class="step-arrow">→</span>
+                        <span class="step" data-node="executor"><span class="step-icon"></span> 执行</span>
+                        <span class="step-arrow">→</span>
+                        <span class="step" data-node="tools"><span class="step-icon"></span> 工具</span>
+                        <span class="step-arrow">→</span>
+                        <span class="step" data-node="critic"><span class="step-icon"></span> 评审</span>
+                    </div>
+                    <div id="stream-output" class="output-area" role="log" aria-live="polite"></div>
+                    <h2 style="margin-top: 1.5rem;">最终结果</h2>
                     <div id="output" class="output-area" role="log" aria-live="polite"></div>
                 </div>
 
