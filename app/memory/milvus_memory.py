@@ -103,7 +103,6 @@ class MilvusMemory:
 
         try:
             self._collection.insert([
-                [None],                                          # id (auto)
                 [thread_id],
                 [content[:4096]],
                 [embedding],
