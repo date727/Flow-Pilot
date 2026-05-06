@@ -93,9 +93,12 @@ async function loadThreadHistory(threadId) {
     try {
         const res = await fetch(`${API_BASE}/tasks/${threadId}`);
         if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        // 防止竞态：如果用户在加载期间切换了会话或新建了对话，丢弃本次结果
+        if (state.activeThreadId !== threadId) return;
         const data = await res.json();
         renderMessages(data.messages || []);
     } catch (err) {
+        if (state.activeThreadId !== threadId) return;
         chatMessages.innerHTML = `<div class="empty-chat"><p>加载失败: ${escapeHtml(err.message)}</p></div>`;
     }
 }
