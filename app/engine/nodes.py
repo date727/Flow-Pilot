@@ -26,6 +26,10 @@ mcp_manager = MCPManager()
 
 # Milvus 记忆检索用于规划的条数
 _MEMORY_TOP_K = 3
+# 工具输出最大保留字符数（防止 git diff 等大输出撑爆上下文导致超时）
+_MAX_TOOL_OUTPUT_CHARS = 3000
+# Executor 发送给 LLM 的最大历史消息数
+_MAX_CONTEXT_MESSAGES = 30
 
 
 # ── 工具调用格式转换 ──────────────────────────────────────────────────────────
@@ -145,6 +149,8 @@ async def executor_node(state: AgentState) -> Dict[str, Any]:
     current_history = _messages_to_openai_format(state["messages"])
     # 合并：先放历史，再放当前轮（避免重复）
     merged_history = _merge_histories(session_history, current_history)
+    # 裁剪上下文，防止撑爆导致超时
+    merged_history = _trim_context(merged_history)
 
     plan = state.get("plan", "")
 
@@ -225,6 +231,11 @@ async def tools_node(state: AgentState) -> Dict[str, Any]:
                 )
             else:
                 content = str(result.data)
+            # 截断过长输出，防止撑爆上下文
+            if len(content) > _MAX_TOOL_OUTPUT_CHARS:
+                content = content[:_MAX_TOOL_OUTPUT_CHARS] + (
+                    f"\n\n…(已截断，原输出共 {len(content)} 字符)"
+                )
             logger.debug("[Tools] 工具 %s 执行成功", tool_name)
         else:
             content = f"Error: {result.error}"
@@ -348,6 +359,16 @@ def _merge_histories(
     merged = [m for m in recent if m.get("content", "") not in current_contents]
     merged.extend(current)
     return merged
+
+
+def _trim_context(history: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    """裁剪上下文，防止消息过多或单条过长导致 LLM 超时"""
+    if len(history) <= _MAX_CONTEXT_MESSAGES:
+        return history
+    # 始终保留第一条（用户原始问题）和最后 20 条
+    kept = history[:1] + history[-20:]
+    logger.info("[Executor] 上下文裁剪: %d → %d 条", len(history), len(kept))
+    return kept
 
 
 async def store_long_term_memory(

@@ -259,11 +259,15 @@ async def list_threads(limit: int = Query(20, ge=1, le=100)):
     try:
         app = await get_graph_app()
         threads = []
-        # LangGraph 的 list 接口返回所有 checkpoint
-        async for checkpoint_tuple in app.checkpointer.alist(config=None, limit=limit):
+        # LangGraph alist 的 limit 约束的是 checkpoint 数而非线程数，
+        # 每次任务产生多个 checkpoint，因此用更大的 limit 确保覆盖
+        fetch_limit = max(limit * 8, 200)
+        async for checkpoint_tuple in app.checkpointer.alist(config=None, limit=fetch_limit):
             tid = checkpoint_tuple.config.get("configurable", {}).get("thread_id")
             if tid and tid not in threads:
                 threads.append(tid)
+                if len(threads) >= limit:
+                    break
         return threads
     except Exception as exc:
         logger.error("[API] 列出会话失败: %s", exc)
