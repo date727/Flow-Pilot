@@ -26,11 +26,7 @@ class Settings(BaseSettings):
     # ── Database ──────────────────────────────────────────────────────────────
     DATABASE_URL: str
 
-    # ── Redis（第三阶段：短期记忆/会话缓存）────────────────────────────────────
-    REDIS_URL: str = "redis://localhost:6379/0"
-    REDIS_SESSION_TTL: int = 3600          # 会话缓存过期时间（秒）
-
-    # ── Milvus（第三阶段：长期向量记忆）──────────────────────────────────────
+    # ── Milvus（长期向量记忆）────────────────────────────────────────────────
     MILVUS_HOST: str = "localhost"
     MILVUS_PORT: int = 19530
     MILVUS_COLLECTION: str = "flow_pilot_memory"

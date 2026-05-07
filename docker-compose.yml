@@ -20,22 +20,6 @@ services:
       retries: 5
     restart: unless-stopped
 
-  # ── Redis（短期记忆/会话缓存）────────────────────────────────────────────────
-  redis:
-    image: redis:7-alpine
-    container_name: flow_pilot_redis
-    ports:
-      - "6379:6379"
-    volumes:
-      - redis_data:/data
-    command: redis-server --appendonly yes
-    healthcheck:
-      test: ["CMD", "redis-cli", "ping"]
-      interval: 10s
-      timeout: 5s
-      retries: 5
-    restart: unless-stopped
-
   # ── Milvus（长期向量记忆）────────────────────────────────────────────────────
   etcd:
     image: quay.m.daocloud.io/coreos/etcd:v3.5.5
@@ -111,7 +95,6 @@ services:
       - .env
     environment:
       DATABASE_URL: postgresql+asyncpg://postgres:postgres@postgres:5432/flow_pilot
-      REDIS_URL: redis://redis:6379/0
       MILVUS_HOST: milvus
       MILVUS_PORT: 19530
       # MCP 服务器配置（使用 fetch 服务器，无需 API Key）
@@ -125,8 +108,6 @@ services:
     depends_on:
       postgres:
         condition: service_healthy
-      redis:
-        condition: service_healthy
       milvus:
         condition: service_healthy
     healthcheck:
@@ -138,7 +119,6 @@ services:
 
 volumes:
   postgres_data:
-  redis_data:
   etcd_data:
   minio_data:
   milvus_data:

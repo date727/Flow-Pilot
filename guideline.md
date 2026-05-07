@@ -9,7 +9,7 @@
 - **编排层 (Orchestration Layer)**: 基于 **LangGraph** 的状态机架构，支持任务的动态拆解、意图对齐及状态流转。
 - **协议层 (Protocol Layer)**: 引入 **MCP** 协议，标准化异构工具（本地脚本、API、数据库等）的调用链路，实现工具的即插即用。
 - **记忆层 (Memory Layer)**:
-  - **Redis**: 负责短期上下文缓存、会话管理。
+  - **PostgreSQL**: 负责会话持久化（LangGraph Checkpoint）。
   - **Milvus**: 负责长期向量记忆（RAG），支持历史经验的检索与复用。
 - **工作流模式 (Workflow Pattern)**: 深度集成 **Reflexion** 机制（Plan -> Execute -> Critic -> Re-plan），构建具备自我纠错能力的闭环系统。
 
@@ -20,16 +20,15 @@
 - **Agent 编排**: LangGraph / LangChain
 - **协议标准**: MCP (Model Context Protocol)
 - **向量数据库**: Milvus
-- **缓存/Session**: Redis
 - **LLM 适配**: LiteLLM (支持 OpenAI, DeepSeek, Anthropic 等多模型切换)
-- **状态持久化**: PostgreSQL (用于 LangGraph Checkpoints)
+- **状态持久化**: PostgreSQL (用于 LangGraph Checkpoints，含会话历史)
 
 ## 4. 模块化分解
 
 - `app/api/`: 存放 FastAPI 路由、Request/Response Schema。
 - `app/engine/`: 定义 LangGraph 状态机、节点逻辑与连边规则。
 - `app/mcp/`: MCP Client 实现，负责工具注册与调用分发。
-- `app/memory/`: 封装 Redis 与 Milvus 的读写接口。
+- `app/memory/`: 封装 Milvus 长期记忆的读写接口。
 - `app/agents/`: 定义具体 Agent 角色（如 Planner, Executor, Critic）。
 - `app/core/`: 项目基础配置、工具类及日志管理。
 
@@ -49,7 +48,7 @@
 
 ### 第三阶段：分层记忆与上下文管理
 
-- 集成 Redis 实现会话级别的上下文快速缓存。
+- 依赖 PostgreSQL Checkpoint 实现会话级别的上下文持久化。
 - 集成 Milvus 构建语义记忆库，支持长程依赖任务。
 - 开发上下文压缩与修剪算法，提升长对话下的模型鲁棒性。
 

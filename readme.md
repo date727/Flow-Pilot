@@ -6,7 +6,7 @@
 
 - **MCP 协议**：标准化工具调用，支持 stdio/sse 两种传输方式
 - **Reflexion 闭环**：Plan → Execute → Critic → Re-plan 自我纠错
-- **分层记忆**：Redis 短期缓存 + Milvus 长期向量记忆
+- **分层记忆**：PostgreSQL 会话持久化 + Milvus 长期向量记忆
 - **LangGraph**：基于状态机的可持久化工作流
 - **流式输出**：SSE 实时推送执行过程
 - **前端 Demo**：开箱即用的静态页面，支持任务提交与状态监控
@@ -16,7 +16,7 @@
 - **后端**：Python 3.11, FastAPI, LangGraph, LangChain
 - **Agent 编排**：Planner / Executor / Critic 三角色协作
 - **协议**：MCP (Model Context Protocol)
-- **记忆**：Redis (短期), Milvus (长期向量)
+- **记忆**：PostgreSQL (会话), Milvus (长期向量)
 - **持久化**：PostgreSQL (LangGraph Checkpoints)
 - **LLM**：LiteLLM (支持 OpenAI, DeepSeek, SiliconFlow 等)
 - **前端**：原生 HTML + JavaScript
@@ -37,7 +37,7 @@ cp .env.example .env
 ### 启动依赖服务
 
 ```bash
-docker-compose up -d postgres redis milvus
+docker-compose up -d postgres milvus
 ```
 
 > 首次启动 Milvus 可能需要等待 etcd + minio 就绪。
@@ -77,7 +77,6 @@ docker-compose up -d
 | 容器 | 服务 | 端口 |
 |------|------|------|
 | flow_pilot_postgres | PostgreSQL | 5432 |
-| flow_pilot_redis | Redis | 6379 |
 | flow_pilot_milvus | Milvus | 19530 |
 | flow_pilot_app | Flow-Pilot 后端 | 8000 |
 
@@ -93,7 +92,7 @@ docker-compose up -d
 │   ├── agents/           # Planner, Executor, Critic
 │   ├── core/             # 配置, LLM 封装, 日志
 │   ├── mcp/              # MCP 客户端与管理器
-│   └── memory/           # Redis / Milvus / ContextManager
+│   └── memory/           # Milvus / ContextManager
 ├── frontend/             # 前端 Demo (HTML + JS)
 ├── test/                 # 测试脚本
 ├── docker-compose.yml
@@ -108,7 +107,7 @@ docker-compose up -d
 
 | 方法 | 路径 | 说明 |
 |------|------|------|
-| GET | `/health` | 健康检查（Redis/Milvus/MCP 状态） |
+| GET | `/health` | 健康检查（Milvus/MCP 状态） |
 | GET | `/metrics` | LLM Token 使用统计 |
 | POST | `/api/v1/tasks/` | 提交任务（支持 `stream=true` SSE） |
 | GET | `/api/v1/tasks/{thread_id}` | 获取任务历史 |
@@ -164,7 +163,6 @@ docker exec -it flow_pilot_app python test/test_graph.py
 | `SILICONFLOW_API_KEY` | LLM API Key | - |
 | `SILICONFLOW_MODEL` | 模型名称 | `deepseek-ai/DeepSeek-V3` |
 | `DATABASE_URL` | PostgreSQL 连接 | - |
-| `REDIS_URL` | Redis 连接 | `redis://localhost:6379/0` |
 | `MILVUS_HOST` | Milvus 地址 | `localhost` |
 | `MCP_SERVERS_JSON` | MCP 服务器配置 | `{}` |
 | `MAX_REFLECTION_ROUNDS` | 最大反思轮次 | `3` |

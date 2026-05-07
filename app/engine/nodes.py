@@ -13,7 +13,6 @@ from app.core.llm import llm_service
 from app.core.config import settings
 from app.core.logging import get_logger
 from app.mcp.client import MCPManager
-from app.memory.redis_memory import redis_memory
 from app.memory.milvus_memory import milvus_memory
 from app.agents.planner import planner_agent
 from app.agents.executor import executor_agent
@@ -137,20 +136,15 @@ async def planner_node(state: AgentState) -> Dict[str, Any]:
 async def executor_node(state: AgentState) -> Dict[str, Any]:
     """
     执行节点：ReAct 模式，思考并决策（调用工具或给出最终答案）。
-    从 Redis 加载会话历史实现短期记忆，使同 thread_id 的多轮对话保持连贯。
+    对话历史由 LangGraph checkpoint（PostgreSQL）通过 operator.add 自动累积，
+    无需额外缓存层。
     """
     logger.info("[Executor] 开始执行")
 
     tools = await mcp_manager.get_all_tools()
-    thread_id = state.get("thread_id", "")
 
-    # ── 加载短期记忆（Redis） ───────────────────────────────────────────────
-    session_history = await _load_short_term_memory(thread_id)
-    current_history = _messages_to_openai_format(state["messages"])
-    # 合并：先放历史，再放当前轮（避免重复）
-    merged_history = _merge_histories(session_history, current_history)
-    # 裁剪上下文，防止撑爆导致超时
-    merged_history = _trim_context(merged_history)
+    history = _messages_to_openai_format(state["messages"])
+    history = _trim_context(history)
 
     plan = state.get("plan", "")
 
@@ -192,9 +186,6 @@ async def executor_node(state: AgentState) -> Dict[str, Any]:
         logger.info("[Executor] 请求调用工具: %s", [tc["name"] for tc in formatted_tool_calls])
     else:
         logger.info("[Executor] 给出最终答案（%d 字符）", len(ai_msg_content))
-
-    # ── 保存短期记忆（Redis） ───────────────────────────────────────────────
-    await _save_short_term_memory(thread_id, merged_history, ai_msg_content)
 
     return {
         "messages": [AIMessage(content=ai_msg_content, tool_calls=formatted_tool_calls)],
@@ -308,63 +299,6 @@ async def _retrieve_long_term_memory(task: str, thread_id: str) -> List[Dict[str
     except Exception as exc:
         logger.warning("[Memory] Milvus 检索失败（不影响主流程）: %s", exc)
         return []
-
-
-async def _load_short_term_memory(thread_id: str) -> List[Dict[str, Any]]:
-    """从 Redis 加载会话历史消息"""
-    if not thread_id:
-        return []
-    try:
-        history = await redis_memory.get_session(thread_id)
-        if history:
-            logger.info("[Memory] Redis 加载会话历史: %d 条消息", len(history))
-        return history
-    except Exception as exc:
-        logger.warning("[Memory] Redis 加载失败（不影响主流程）: %s", exc)
-        return []
-
-
-async def _save_short_term_memory(
-    thread_id: str,
-    history: List[Dict[str, Any]],
-    final_output: str,
-) -> None:
-    """保存会话消息到 Redis，截断长内容防止下轮上下文爆炸"""
-    if not thread_id:
-        return
-    try:
-        MAX_SAVE_PER_MSG = 1000  # 存储时单条消息最多保留字符数
-        saved = []
-        for m in history:
-            m2 = dict(m)
-            c = m2.get("content", "")
-            if isinstance(c, str) and len(c) > MAX_SAVE_PER_MSG:
-                m2["content"] = c[:MAX_SAVE_PER_MSG] + "…"
-            saved.append(m2)
-        saved.append({"role": "assistant", "content": final_output[:MAX_SAVE_PER_MSG]})
-        # 控制条数：只保留最近 20 条
-        if len(saved) > 20:
-            saved = saved[-20:]
-        await redis_memory.save_session(thread_id, saved)
-        logger.info("[Memory] Redis 保存会话: %d 条消息", len(saved))
-    except Exception as exc:
-        logger.warning("[Memory] Redis 保存失败（不影响主流程）: %s", exc)
-
-
-def _merge_histories(
-    session: List[Dict[str, Any]],
-    current: List[Dict[str, Any]],
-) -> List[Dict[str, Any]]:
-    """合并历史会话与当前轮消息，去重"""
-    if not session:
-        return current
-    # 简单策略：取会话历史的最后 10 条 + 当前轮全部
-    recent = session[-10:]
-    # 用 content 简易去重
-    current_contents = {m.get("content", "") for m in current if m.get("content")}
-    merged = [m for m in recent if m.get("content", "") not in current_contents]
-    merged.extend(current)
-    return merged
 
 
 def _trim_context(history: List[Dict[str, Any]]) -> List[Dict[str, Any]]:

@@ -41,7 +41,7 @@ class PlannerAgent:
     规划 Agent
 
     接收用户任务描述，输出结构化的执行计划。
-    支持注入历史上下文（来自 Redis 或 Milvus）以提升规划质量。
+    支持注入历史上下文（来自 Milvus 长期记忆）以提升规划质量。
     """
 
     def __init__(self, llm=None):

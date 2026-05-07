@@ -337,13 +337,11 @@ async function loadHealthStatus() {
         if (!res.ok) throw new Error(`HTTP ${res.status}`);
         const data = await res.json();
         const svc = data.services || {};
-        const redisOk = (svc.redis || '').includes('connected');
         const milvusOk = (svc.milvus || '').includes('connected');
 
-        healthDot.className = 'dot' + (redisOk ? '' : ' offline');
+        healthDot.className = 'dot' + (milvusOk ? '' : ' offline');
 
         healthStatus.innerHTML = `
-            <div class="status-row"><span>Redis</span><span class="status-dot ${redisOk ? 'ok' : 'warn'}"></span> ${svc.redis || '?'}</div>
             <div class="status-row"><span>Milvus</span><span class="status-dot ${milvusOk ? 'ok' : 'warn'}"></span> ${svc.milvus || '?'}</div>
             <div class="status-row"><span>MCP</span><span>${svc.mcp_servers || '?'}</span></div>
         `;
