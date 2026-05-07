@@ -14,6 +14,7 @@ from app.core.config import settings
 from app.core.logging import get_logger
 from app.mcp.client import MCPManager
 from app.memory.milvus_memory import milvus_memory
+from app.memory.context_manager import context_manager
 from app.agents.planner import planner_agent
 from app.agents.executor import executor_agent
 from app.agents.critic import critic_agent
@@ -136,21 +137,27 @@ async def planner_node(state: AgentState) -> Dict[str, Any]:
 async def executor_node(state: AgentState) -> Dict[str, Any]:
     """
     执行节点：ReAct 模式，思考并决策（调用工具或给出最终答案）。
-    对话历史由 LangGraph checkpoint（PostgreSQL）通过 operator.add 自动累积，
-    无需额外缓存层。
+
+    上下文管理：
+    1. maybe_compress: LLM 语义压缩（消息 > 20 条时将旧消息摘要化）
+    2. _messages_to_openai_format: LangChain 对象 → OpenAI dict
+    3. _trim_context: 规则裁剪兜底（单条 ≤2000 字符，总数 ≤30 条）
     """
     logger.info("[Executor] 开始执行")
 
     tools = await mcp_manager.get_all_tools()
 
-    history = _messages_to_openai_format(state["messages"])
+    # ── 上下文压缩 + 格式转换 + 裁剪 ─────────────────────────────────────────
+    messages = list(state["messages"])
+    messages = await context_manager.maybe_compress(messages)
+    history = _messages_to_openai_format(messages)
     history = _trim_context(history)
 
     plan = state.get("plan", "")
 
     response = await executor_agent.think_and_act(
         plan=plan,
-        history=merged_history,
+        history=history,
         tools=tools if tools else None,
     )
 
